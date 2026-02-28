@@ -19,10 +19,9 @@ def is_port_open(ip, port):
     except:
         return (ip, port, False)
     finally:
-        try:
-            s.close()
-        except OSError:
-            pass
+        s.close()
+
+
 
 def detect_service(ip, port):
     """Attempt to identify HTTP, FTP, Telnet, or SSH on an open port via banner grabbing."""
