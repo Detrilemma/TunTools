@@ -36,11 +36,8 @@ def detect_service(ip, port):
         except:
             banner = b""
         finally:
-            try:
-                s.close()
-            except OSError:
-                pass
-
+            s.close()
+            
         if banner.startswith(b"SSH-"):
             return "ssh"
         if banner.startswith(b"220") or b"FTP" in banner[:64]:
