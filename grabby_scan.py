@@ -21,8 +21,6 @@ def is_port_open(ip, port):
     finally:
         s.close()
 
-
-
 def detect_service(ip, port):
     """Attempt to identify HTTP, FTP, Telnet, or SSH on an open port via banner grabbing."""
     try:
@@ -37,7 +35,7 @@ def detect_service(ip, port):
             banner = b""
         finally:
             s.close()
-            
+
         if banner.startswith(b"SSH-"):
             return "ssh"
         if banner.startswith(b"220") or b"FTP" in banner[:64]:
@@ -95,7 +93,7 @@ def http_recursive_download(ip, port, base_dir):
 
         with open(local_file, 'wb') as f:
             f.write(data)
-        print(f"  [>] Saved {url} -> {local_file}")
+        print(f"  [>] Saved -> {local_file}")
 
         # Parse links from HTML responses
         content_type = resp.headers.get('Content-Type', '')
@@ -169,7 +167,7 @@ def ftp_recursive_download(ip, port, base_dir):
                 try:
                     with open(local_item, 'wb') as f:
                         ftp.retrbinary(f"RETR {remote_item}", f.write)
-                    print(f"  [>] Saved ftp://{ip}{remote_item} -> {local_item}")
+                    print(f"  [>] Saved -> {local_item}")
                 except Exception as e:
                     print(f"  [!] FTP RETR failed {remote_item}: {e}")
 
@@ -208,7 +206,7 @@ for port_range in port_ranges:
 _devnull = open(os.devnull, 'w')
 os.dup2(_devnull.fileno(), 2)
 
-# Cap workers at 200 — the SOCKS proxy is the bottleneck, not local fd limits.
+# Cap workers at 500 — the SOCKS proxy is the bottleneck, not local fd limits.
 # Too many concurrent connections causes the proxy to silently drop connections.
 soft_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
 MAX_WORKERS = min(500, soft_limit - 50)
@@ -235,19 +233,20 @@ if start_ip == end_ip:
     live_hosts = {f"{network}.{start_ip}"}  # If only one IP, assume it's live even if probes failed
 
 if ports:
-    extra_ports = [p for p in ports if p not in PROBE_PORTS]
-    if extra_ports:
-        print(f"[*] Phase 2: scanning {len(extra_ports)} additional port(s) on {len(live_hosts)} live hosts...")
-        targets = [(ip, port) for ip in live_hosts for port in extra_ports]
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(is_port_open, ip, port): (ip, port) for ip, port in targets}
-            for future in as_completed(futures):
-                ip, port, open_ = future.result()
-                if open_:
-                    service = detect_service(ip, port)
-                    if service:
-                        print(f"[+] {ip} port [{port}] is open ({service})")
-                        if service in ('http', 'ftp'):
-                            auto_grab(ip, port, service)
-                    else:
-                        print(f"[+] {ip} port [{port}] is open")
+    # Only scan additional ports that are not already in PROBE_PORTS and are >= 1024
+    # (to avoid attempting http and ftp get of other well-known ports)
+    extra_ports = [p for p in ports if p not in PROBE_PORTS and p >= 1024]
+    print(f"[*] Phase 2: scanning {len(extra_ports)} additional port(s) on {len(live_hosts)} live hosts...")
+    targets = [(ip, port) for ip in live_hosts for port in extra_ports]
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(is_port_open, ip, port): (ip, port) for ip, port in targets}
+        for future in as_completed(futures):
+            ip, port, open_ = future.result()
+            if open_:
+                service = detect_service(ip, port)
+                if service:
+                    print(f"[+] {ip} port [{port}] is open ({service})")
+                    if service in ('http', 'ftp'):
+                        auto_grab(ip, port, service)
+                else:
+                    print(f"[+] {ip} port [{port}] is open")

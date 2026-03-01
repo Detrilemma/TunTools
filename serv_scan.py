@@ -15,11 +15,8 @@ def is_port_open(ip, port):
     except:
         return (ip, port, False)
     finally:
-        try:
-            s.close()
-        except OSError:
-            pass
-
+        s.close()
+    
 
 def detect_service(ip, port):
     """Attempt to identify HTTP, FTP, Telnet, or SSH on an open port via banner grabbing."""
@@ -34,10 +31,7 @@ def detect_service(ip, port):
         except:
             banner = b""
         finally:
-            try:
-                s.close()
-            except OSError:
-                pass
+            s.close()
 
         if banner.startswith(b"SSH-"):
             return "ssh"
@@ -73,7 +67,7 @@ for port_range in port_ranges:
 _devnull = open(os.devnull, 'w')
 os.dup2(_devnull.fileno(), 2)
 
-# Cap workers at 200 — the SOCKS proxy is the bottleneck, not local fd limits.
+# Cap workers at 500 — the SOCKS proxy is the bottleneck, not local fd limits.
 # Too many concurrent connections causes the proxy to silently drop connections.
 soft_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
 MAX_WORKERS = min(500, soft_limit - 50)
@@ -98,16 +92,15 @@ if start_ip == end_ip:
 
 if ports:
     extra_ports = [p for p in ports if p not in PROBE_PORTS]
-    if extra_ports:
-        print(f"[*] Phase 2: scanning {len(extra_ports)} additional port(s) on {len(live_hosts)} live hosts...")
-        targets = [(ip, port) for ip in live_hosts for port in extra_ports]
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            futures = {executor.submit(is_port_open, ip, port): (ip, port) for ip, port in targets}
-            for future in as_completed(futures):
-                ip, port, open_ = future.result()
-                if open_:
-                    service = detect_service(ip, port)
-                    if service:
-                        print(f"[+] {ip} port [{port}] is open ({service})")
-                    else:
-                        print(f"[+] {ip} port [{port}] is open")
+    print(f"[*] Phase 2: scanning {len(extra_ports)} additional port(s) on {len(live_hosts)} live hosts...")
+    targets = [(ip, port) for ip in live_hosts for port in extra_ports]
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(is_port_open, ip, port): (ip, port) for ip, port in targets}
+        for future in as_completed(futures):
+            ip, port, open_ = future.result()
+            if open_:
+                service = detect_service(ip, port)
+                if service:
+                    print(f"[+] {ip} port [{port}] is open ({service})")
+                else:
+                    print(f"[+] {ip} port [{port}] is open")

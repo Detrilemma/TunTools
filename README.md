@@ -4,6 +4,16 @@ A collection of Python network scanning and content-grabbing scripts designed to
 
 ---
 
+## How to Use These Scripts
+
+These scripts can be used to either scan for open ports on either a range of IP addresses (such as a subnet) or a single IP address. Single IP adresses are specified by entering the last octet of the addres as the starting and ending IP.
+
+Ports 21, 22, 23, and 80 are included by default on every scan. The user may press enter when prompted to enter port numbers if they are only interested in these ports. 
+
+IMPORTANT NOTE: when scaning for ports outside the set of default ports, the scripts behaves slightly differently depending on whether ports are being scanned on a range of IP addresses or a single address. If a range is specified, the scripts will only scan non-default ports for an IP address if it discovers at least one of the default ports is open for that address. If a single address is specified, the script will scan all specified ports regardless of if one of the default ports is open.
+
+---
+
 ## Installation
 
 These scripts are standalone Python 3 files with no external dependencies. To install on a Debian/Ubuntu-based VM:
