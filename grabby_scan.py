@@ -8,6 +8,7 @@ import resource
 import ftplib
 import urllib.request
 import urllib.parse
+import time
 from html.parser import HTMLParser
 
 def is_port_open(ip, port):
@@ -137,6 +138,7 @@ def ftp_recursive_download(ip, port, base_dir):
         ftp.set_pasv(True)
         ftp.connect(ip, port, timeout=20)
         ftp.login()  # anonymous
+        time.sleep(1)  # give the server a moment before issuing commands
     except Exception as e:
         print(f"  [!] FTP connect failed {ip}:{port}: {e}")
         return
@@ -145,12 +147,18 @@ def ftp_recursive_download(ip, port, base_dir):
 
     def download_dir(remote_path, local_path):
         os.makedirs(local_path, exist_ok=True)
-        try:
-            entries = []
-            ftp.retrlines(f"LIST {remote_path}", entries.append)
-        except Exception as e:
-            print(f"  [!] FTP LIST failed {remote_path}: {e}")
-            return
+        entries = []
+        for attempt in range(3):
+            try:
+                ftp.retrlines(f"LIST {remote_path}", entries.append)
+                break  # success
+            except Exception as e:
+                if attempt < 2:
+                    time.sleep(2)
+                    entries = []
+                else:
+                    print(f"  [!] FTP LIST failed {remote_path}: {e}")
+                    return
 
         for entry in entries:
             parts = entry.split(None, 8)
@@ -174,22 +182,25 @@ def ftp_recursive_download(ip, port, base_dir):
     download_dir('/', base_dir)
     ftp.quit()
 
-
-def auto_grab(ip, port, service):
-    """Download content from HTTP or FTP service automatically."""
-    base_dir = os.path.join(os.getcwd(), ip)
-    if service == 'http':
-        http_recursive_download(ip, port, base_dir)
-    elif service == 'ftp':
-        ftp_recursive_download(ip, port, base_dir)
-
-
-
 network = input("Network to scan (e.g. 192.168.1.): ")
 start_ip = input("Starting IP (e.g. 1): ")
 end_ip = input("Ending IP (e.g. 254): ")
 print("Additional ports to try to get FTP or HTTP content from (ports 80 and 21 are always included)")
 ports_str = input("Ports (e.g. 1024-2000 2048): ")
+download_dir = input("Directory to save grabbed content (default: current directory): ").strip() or os.getcwd()
+
+if download_dir and download_dir[0] != '/':
+    download_dir = os.path.abspath(download_dir)
+elif not download_dir:
+    download_dir = os.getcwd()
+
+def auto_grab(ip, port, service, download_dir=download_dir):
+    """Download content from HTTP or FTP service automatically."""
+    base_dir = os.path.join(download_dir, ip)
+    if service == 'http':
+        http_recursive_download(ip, port, base_dir)
+    elif service == 'ftp':
+        ftp_recursive_download(ip, port, base_dir)
 
 port_ranges = re.split(r'[,\s]', ports_str.strip())
 ports = []
