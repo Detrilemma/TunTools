@@ -10,24 +10,32 @@ import urllib.request
 import urllib.parse
 import time
 from html.parser import HTMLParser
+from threading import Lock
+
+# proxychains3 uses LD_PRELOAD to hook connect() but its hook is not thread-safe.
+# This lock serializes all connect() calls so only one thread touches the
+# proxychains hook at a time, preventing state corruption on large scans.
+_proxy_lock = Lock()
 
 def is_port_open(ip, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(2)
-    try:
-        s.connect((ip, port))
-        return (ip, port, True)
-    except:
-        return (ip, port, False)
-    finally:
-        s.close()
+    with _proxy_lock:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        try:
+            s.connect((ip, port))
+            return (ip, port, True)
+        except:
+            return (ip, port, False)
+        finally:
+            s.close()
 
 def detect_service(ip, port):
     """Attempt to identify HTTP, FTP, Telnet, or SSH on an open port via banner grabbing."""
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(10)
-        s.connect((ip, port))
+        with _proxy_lock:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(10)
+            s.connect((ip, port))
         try:
             # SSH and FTP send banners immediately; send HTTP probe for others
             s.sendall(b"GET / HTTP/1.0\r\nHost: " + ip.encode() + b"\r\n\r\n")

@@ -5,18 +5,25 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import os
 import resource
+from threading import Lock
+
+# proxychains3 uses LD_PRELOAD to hook connect() but its hook is not thread-safe.
+# This lock serializes all connect() calls so only one thread touches the
+# proxychains hook at a time, preventing state corruption on large scans.
+_proxy_lock = Lock()
 
 def is_port_open(ip, port):
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.settimeout(2)
-    try:
-        s.connect((ip, port))
-        return (ip, port, True)
-    except:
-        return (ip, port, False)
-    finally:
-        s.close()
-    
+    with _proxy_lock:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        try:
+            s.connect((ip, port))
+            return (ip, port, True)
+        except:
+            return (ip, port, False)
+        finally:
+            s.close()
+
 
 def detect_service(ip, port):
     """Attempt to identify HTTP, FTP, Telnet, or SSH on an open port via banner grabbing."""
@@ -67,10 +74,10 @@ for port_range in port_ranges:
 _devnull = open(os.devnull, 'w')
 os.dup2(_devnull.fileno(), 2)
 
-# Cap workers at 500 — the SOCKS proxy is the bottleneck, not local fd limits.
+# Cap workers at 250 — the SOCKS proxy is the bottleneck, not local fd limits.
 # Too many concurrent connections causes the proxy to silently drop connections.
 soft_limit, _ = resource.getrlimit(resource.RLIMIT_NOFILE)
-MAX_WORKERS = min(500, soft_limit - 50)
+MAX_WORKERS = min(250, soft_limit - 50)
 
 all_ips = [f"{network}.{ip}" for ip in range(int(start_ip), int(end_ip) + 1)]
 PROBE_PORTS_DICT = {21: 'ftp', 22: 'ssh', 23: 'telnet', 80: 'http'}
